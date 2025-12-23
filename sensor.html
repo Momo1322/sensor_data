@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Node</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            gap: 20px;
+        }
+
+        #status-led {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: #222;
+            border: 3px solid #444;
+            transition: 0.1s;
+        }
+
+        .active { background-color: #0f0 !important; box-shadow: 0 0 25px #0f0; }
+        .error { background-color: #f00 !important; box-shadow: 0 0 25px #f00; }
+
+        input, button {
+            background: #111;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 15px;
+            width: 80%;
+            max-width: 300px;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        button:active { background: #333; }
+        #log { color: #555; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div id="status-led"></div>
+
+    <input type="text" id="target-url" value="http://192.168.1.7:5000/data">
+    
+    <button id="start-btn">START STREAM</button>
+    <button id="stop-btn">STOP</button>
+
+    <div id="log">Awaiting Start...</div>
+
+    <script>
+        let interval = null;
+        let rawAccel = { x: 0, y: 0, z: 0 };
+        let rawGyro = { x: 0, y: 0, z: 0 };
+
+        const led = document.getElementById('status-led');
+        const log = document.getElementById('log');
+        const urlInput = document.getElementById('target-url');
+
+        // Capture Accelerometer
+        window.addEventListener('devicemotion', (e) => {
+            if (e.accelerationIncludingGravity) {
+                rawAccel = {
+                    x: e.accelerationIncludingGravity.x || 0,
+                    y: e.accelerationIncludingGravity.y || 0,
+                    z: e.accelerationIncludingGravity.z || 0
+                };
+            }
+        });
+
+        // Capture Gyroscope
+        window.addEventListener('deviceorientation', (e) => {
+            rawGyro = {
+                x: e.alpha || 0,
+                y: e.beta || 0,
+                z: e.gamma || 0
+            };
+        });
+
+        document.getElementById('start-btn').onclick = () => {
+            if (interval) return;
+            log.innerText = "Transmitting...";
+            interval = setInterval(sendToGo, 100); // 10Hz to match typical monitor refresh
+        };
+
+        document.getElementById('stop-btn').onclick = () => {
+            clearInterval(interval);
+            interval = null;
+            led.className = '';
+            log.innerText = "Paused.";
+        };
+
+        async function sendToGo() {
+            // Match the Go Struct: PayloadData
+            const data = {
+                deviceId: "Android_Phone_" + window.navigator.userAgent.slice(-4),
+                payload: [
+                    {
+                        name: "accelerometer",
+                        values: { x: rawAccel.x, y: rawAccel.y, z: rawAccel.z }
+                    },
+                    {
+                        name: "gyroscope",
+                        values: { x: rawGyro.x, y: rawGyro.y, z: rawGyro.z }
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch(urlInput.value, {
+                    method: 'POST',
+                    mode: 'cors', // Crucial for Go backend
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    led.className = 'active';
+                } else {
+                    led.className = 'error';
+                }
+            } catch (e) {
+                led.className = 'error';
+                log.innerText = "Error: Check URL/Network";
+            }
+        }
+    </script>
+</body>
+</html>
